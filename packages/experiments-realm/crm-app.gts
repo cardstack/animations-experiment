@@ -13,6 +13,10 @@ import type Owner from '@ember/owner';
 import { tracked } from '@glimmer/tracking';
 import { TrackedMap } from 'tracked-built-ins';
 import { restartableTask } from 'ember-concurrency';
+import { format, startOfWeek } from 'date-fns';
+import { debounce } from 'lodash';
+
+const dateFormat = `yyyy-MM-dd`;
 
 import { Component, realmURL } from 'https://cardstack.com/base/card-api';
 
@@ -28,6 +32,7 @@ import {
   Query,
   CardError,
   SupportedMimeType,
+  Filter,
   getCards,
 } from '@cardstack/runtime-common';
 import ContactIcon from '@cardstack/boxel-icons/contact';
@@ -35,8 +40,10 @@ import HeartHandshakeIcon from '@cardstack/boxel-icons/heart-handshake';
 import TargetArrowIcon from '@cardstack/boxel-icons/target-arrow';
 import CalendarExclamation from '@cardstack/boxel-icons/calendar-exclamation';
 import PresentationAnalytics from '@cardstack/boxel-icons/presentation-analytics';
+import ListDetails from '@cardstack/boxel-icons/list-details';
 import { urgencyTagValues } from './crm/account';
 import { dealStatusValues } from './crm/deal';
+import { taskStatusValues } from './crm/shared';
 import type { Deal } from './crm/deal';
 import DealSummary from './crm/deal-summary';
 import { CRMTaskPlannerIsolated } from './crm/task-planner';
@@ -108,10 +115,16 @@ const ACCOUNT_FILTERS: LayoutFilter[] = [
 const TASK_FILTERS: LayoutFilter[] = [
   {
     displayName: 'All Tasks',
-    icon: CalendarExclamation,
+    icon: ListDetails,
     cardTypeName: 'CRM Task',
     createNewButtonText: 'Create Task',
   },
+  ...taskStatusValues.map((status) => ({
+    displayName: status.label,
+    icon: status.icon,
+    cardTypeName: 'CRM Task',
+    createNewButtonText: 'Create Task',
+  })),
 ];
 
 // need to use as typeof AppCard rather than CrmApp otherwise tons of lint errors
@@ -123,10 +136,14 @@ class CrmAppTemplate extends Component<typeof AppCard> {
     ['Account', ACCOUNT_FILTERS],
     ['Task', TASK_FILTERS],
   ]);
+  private taskPlannerAPI: CRMTaskPlannerIsolated | undefined;
   @tracked private activeFilter: LayoutFilter = CONTACT_FILTERS[0];
   @action private onFilterChange(filter: LayoutFilter) {
     this.activeFilter = filter;
     this.loadDealCards.perform();
+    if (this.activeTabId === 'Task') {
+      this.taskPlannerAPI?.loadCards.perform();
+    }
   }
   //tabs
   @tracked activeTabId: string | undefined = this.args.model.tabs?.[0]?.tabId;
@@ -192,6 +209,16 @@ class CrmAppTemplate extends Component<typeof AppCard> {
     this.deals = result.instances as Deal[];
     return result;
   });
+
+  private setupTaskPlanner = (taskPlanner: CRMTaskPlannerIsolated) => {
+    this.taskPlannerAPI = taskPlanner;
+  };
+
+  private debouncedLoadTaskCards = debounce(() => {
+    if (this.activeTabId === 'Task') {
+      this.taskPlannerAPI?.loadCards.perform();
+    }
+  }, 300);
 
   get filters() {
     return this.filterMap.get(this.activeTabId!)!;
@@ -265,7 +292,7 @@ class CrmAppTemplate extends Component<typeof AppCard> {
 
   //query for tabs and filters
   get query() {
-    const { loadAllFilters, activeFilter, activeTabId, searchKey } = this;
+    const { loadAllFilters, activeFilter, activeTabId } = this;
 
     if (!loadAllFilters.isIdle || !activeFilter?.query) return;
 
@@ -299,19 +326,6 @@ class CrmAppTemplate extends Component<typeof AppCard> {
           ]
         : [];
 
-    const searchFilter = searchKey
-      ? [
-          {
-            any: [
-              {
-                on: activeFilter.cardRef,
-                contains: { name: searchKey },
-              },
-            ],
-          },
-        ]
-      : [];
-
     return {
       filter: {
         on: activeFilter.cardRef,
@@ -319,11 +333,63 @@ class CrmAppTemplate extends Component<typeof AppCard> {
           defaultFilter,
           ...accountFilter,
           ...dealFilter,
-          ...searchFilter,
+          ...this.searchFilter,
+          ...this.taskFilter,
         ],
       },
       sort: this.selectedSort?.sort ?? sortByCardTitleAsc,
     } as Query;
+  }
+
+  get searchFilter(): Filter[] {
+    return this.searchKey
+      ? [
+          {
+            any: [
+              {
+                on: this.activeFilter.cardRef,
+                contains: { name: this.searchKey },
+              },
+            ],
+          },
+        ]
+      : [];
+  }
+
+  get taskFilter(): Filter[] {
+    let taskFilter: Filter[] = [];
+    if (
+      this.activeTabId === 'Task' &&
+      this.activeFilter.displayName !== 'All Tasks'
+    ) {
+      const today = new Date();
+      switch (this.activeFilter.displayName) {
+        case 'Overdue':
+          const formattedDate = format(today, dateFormat);
+          taskFilter = [{ range: { 'dateRange.end': { lt: formattedDate } } }];
+          break;
+        case 'Due Today':
+          const formattedDueToday = format(today, dateFormat);
+          taskFilter = [{ eq: { 'dateRange.end': formattedDueToday } }];
+          break;
+        case 'Due this week':
+          const dueThisWeek = startOfWeek(today, { weekStartsOn: 1 });
+          const formattedDueThisWeek = format(dueThisWeek, dateFormat);
+          taskFilter = [
+            { range: { 'dateRange.start': { gt: formattedDueThisWeek } } },
+          ];
+          break;
+        case 'High Priority':
+          taskFilter = [{ eq: { 'priority.label': 'High' } }];
+          break;
+        case 'Unassigned':
+          taskFilter = [{ eq: { 'assignee.id': null } }];
+          break;
+        default:
+          break;
+      }
+    }
+    return taskFilter;
   }
 
   get searchPlaceholder() {
@@ -333,6 +399,7 @@ class CrmAppTemplate extends Component<typeof AppCard> {
   @action
   private setSearchKey(searchKey: string) {
     this.searchKey = searchKey;
+    this.debouncedLoadTaskCards();
   }
 
   @action private onChangeView(id: ViewOption) {
@@ -439,6 +506,10 @@ class CrmAppTemplate extends Component<typeof AppCard> {
             @fields={{@fields}}
             @set={{@set}}
             @fieldName={{@fieldName}}
+            {{! @glint-ignore  Arguments are extended in CRMTaskPlannerIsolated but still not recognized }}
+            @searchFilter={{this.searchFilter}}
+            @taskFilter={{this.taskFilter}}
+            @setupTaskPlanner={{this.setupTaskPlanner}}
           />
         {{else if this.query}}
           {{#if (eq this.selectedView 'card')}}
