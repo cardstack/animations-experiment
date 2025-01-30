@@ -15,7 +15,11 @@ import CodeRef from './code-ref';
 import MarkdownField from './markdown';
 import { restartableTask } from 'ember-concurrency';
 import { LoadingIndicator } from '@cardstack/boxel-ui/components';
-import { loadCard, Loader } from '@cardstack/runtime-common';
+import {
+  codeRefWithAbsoluteURL,
+  loadCard,
+  Loader,
+} from '@cardstack/runtime-common';
 import { eq } from '@cardstack/boxel-ui/helpers';
 
 import GlimmerComponent from '@glimmer/component';
@@ -167,7 +171,7 @@ export class CatalogEntry extends CardDef {
           {{#if (eq @model.specType 'field')}}
             <@fields.containedExamples />
           {{else}}
-            <@fields.linkedExamples />
+            <@fields.linkedExamples @linksToType={{@model.ref}} />
           {{/if}}
         </div>
         <div class='module section'>
@@ -326,6 +330,19 @@ export class CatalogEntry extends CardDef {
           font-size: var(--boxel-font-size-xs);
         }
       </style>
+    </template>
+  };
+
+  static edit = class Edit extends Component<typeof this> {
+    get absoluteRef() {
+      if (!this.args.model.ref || !this.args.model.id) {
+        return undefined;
+      }
+      let url = new URL(this.args.model.id);
+      return codeRefWithAbsoluteURL(this.args.model.ref, url);
+    }
+    <template>
+      <@fields.linkedExamples @linksToType={{this.absoluteRef}} />
     </template>
   };
 }

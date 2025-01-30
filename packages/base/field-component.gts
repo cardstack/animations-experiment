@@ -33,7 +33,13 @@ import Component from '@glimmer/component';
 
 export interface BoxComponentSignature {
   Element: HTMLElement; // This may not be true for some field components, but it's true more often than not
-  Args: { Named: { format?: Format; displayContainer?: boolean } };
+  Args: {
+    Named: {
+      format?: Format;
+      displayContainer?: boolean;
+      linksToType?: CodeRef;
+    };
+  };
   Blocks: {};
 }
 
@@ -185,7 +191,11 @@ export function getBoxComponent(
 
   let component: TemplateOnlyComponent<{
     Element: HTMLElement;
-    Args: { format?: Format; displayContainer?: boolean };
+    Args: {
+      format?: Format;
+      displayContainer?: boolean;
+      linksToType?: CodeRef;
+    };
   }> = <template>
     <CardContextConsumer as |context|>
       <PermissionsConsumer as |permissions|>
@@ -238,6 +248,7 @@ export function getBoxComponent(
                           (not field.computeVia)
                           permissions.canWrite
                         }}
+                        @linksToType={{@linksToType}}
                       />
                     </CardContainer>
                   </DefaultFormatsProvider>
@@ -265,6 +276,7 @@ export function getBoxComponent(
                         (not field.computeVia)
                         permissions.canWrite
                       }}
+                      @linksToType={{@linksToType}}
                     />
                   </div>
                 </DefaultFormatsProvider>
@@ -281,6 +293,7 @@ export function getBoxComponent(
                     @fieldName={{model.name}}
                     @context={{context}}
                     @canEdit={{and (not field.computeVia) permissions.canWrite}}
+                    @linksToType={{@linksToType}}
                     ...attributes
                   />
                 </DefaultFormatsProvider>
