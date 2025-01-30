@@ -1812,6 +1812,7 @@ export type BaseDefComponent = ComponentLike<{
     fieldName: string | undefined;
     context?: CardContext;
     canEdit?: boolean;
+    linksToType?: CodeRef;
   };
 }>;
 

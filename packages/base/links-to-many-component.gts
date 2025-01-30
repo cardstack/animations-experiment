@@ -29,6 +29,7 @@ import {
   getPlural,
   CardContextName,
   RealmURLContextName,
+  type CodeRef,
 } from '@cardstack/runtime-common';
 import { IconMinusCircle, IconX, FourLines } from '@cardstack/boxel-ui/icons';
 import { eq } from '@cardstack/boxel-ui/helpers';
@@ -47,6 +48,7 @@ interface Signature {
     model: Box<CardDef[]>;
     field: Field<typeof CardDef>;
     childFormat: 'atom' | 'fitted';
+    linksToType?: CodeRef;
   };
 }
 
@@ -85,8 +87,13 @@ class LinksToManyEditor extends GlimmerComponent<Signature> {
     let selectedCardsQuery =
       selectedCards?.map((card: any) => ({ not: { eq: { id: card.id } } })) ??
       [];
-    let type = identifyCard(this.args.field.card) ?? baseCardRef;
-    let filter = { every: [{ type }, ...selectedCardsQuery] };
+    let type =
+      this.args.linksToType ??
+      identifyCard(this.args.field.card) ??
+      baseCardRef;
+    let filter = {
+      every: [{ type }, ...selectedCardsQuery],
+    };
     let chosenCard: CardDef | undefined = await chooseCard(
       { filter },
       {
@@ -378,6 +385,7 @@ export function getLinksToManyComponent({
               defaultFormats.cardDef
               model
             }}
+            @linksToType={{@linksToType}}
             ...attributes
           />
         {{else}}
