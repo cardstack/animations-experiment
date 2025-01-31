@@ -22,7 +22,7 @@ import {
   setTitle,
   roomTitleAlreadySet,
 } from './lib/set-title';
-import { Responder } from './lib/send-response';
+import { Responder } from './lib/responder';
 import { handleDebugCommands } from './lib/debug';
 import { MatrixClient } from './lib/matrix';
 import type { MatrixEvent as DiscreteMatrixEvent } from 'https://cardstack.com/base/matrix-event';
@@ -93,6 +93,7 @@ class Assistant {
       return this.openai.beta.chat.completions.stream({
         model: prompt.model,
         messages: prompt.messages as ChatCompletionMessageParam[],
+        include_reasoning: true,
       });
     } else {
       return this.openai.beta.chat.completions.stream({
@@ -100,6 +101,7 @@ class Assistant {
         messages: prompt.messages as ChatCompletionMessageParam[],
         tools: prompt.tools,
         tool_choice: prompt.toolChoice,
+        include_reasoning: true,
       });
     }
   }

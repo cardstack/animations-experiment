@@ -1,5 +1,10 @@
 import { setTitle } from './set-title';
-import { sendError, sendOption, sendMessage, MatrixClient } from './matrix';
+import {
+  sendError,
+  sendCommandMessage,
+  sendMessage,
+  MatrixClient,
+} from './matrix';
 import OpenAI from 'openai';
 
 import * as Sentry from '@sentry/node';
@@ -56,10 +61,11 @@ export async function handleDebugCommands(
         client,
         roomId,
         `Error parsing your debug patch, ${error} ${patchMessage}`,
+        '',
         undefined,
       );
     }
-    return await sendOption(
+    return await sendCommandMessage(
       client,
       roomId,
       {
