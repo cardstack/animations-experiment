@@ -2,14 +2,14 @@ import GlimmerComponent from '@glimmer/component';
 import { on } from '@ember/modifier';
 import { fn } from '@ember/helper';
 import {
-  BaseDef,
   type CardContext,
   type Box,
   type BoxComponent,
   type CardDef,
-  type Field,
   type FieldDef,
+  type Field,
   type Format,
+  cardTypeFor,
 } from './card-api';
 import {
   BoxComponentSignature,
@@ -44,13 +44,8 @@ import { action } from '@ember/object';
 interface Signature {
   Element: HTMLElement;
   Args: {
-    model: Box<CardDef>;
-    arrayField: Box<CardDef[]>;
+    model: Box<CardDef[]>;
     field: Field<typeof CardDef>;
-    cardTypeFor(
-      field: Field<typeof BaseDef>,
-      boxedElement: Box<BaseDef>,
-    ): typeof BaseDef;
     childFormat: 'atom' | 'fitted';
   };
 }
@@ -64,9 +59,7 @@ class LinksToManyEditor extends GlimmerComponent<Signature> {
       {{#if (eq @childFormat 'atom')}}
         <LinksToManyCompactEditor
           @model={{@model}}
-          @arrayField={{@arrayField}}
           @field={{@field}}
-          @cardTypeFor={{@cardTypeFor}}
           @add={{this.add}}
           @remove={{this.remove}}
           ...attributes
@@ -74,9 +67,7 @@ class LinksToManyEditor extends GlimmerComponent<Signature> {
       {{else}}
         <LinksToManyStandardEditor
           @model={{@model}}
-          @arrayField={{@arrayField}}
           @field={{@field}}
-          @cardTypeFor={{@cardTypeFor}}
           @add={{this.add}}
           @remove={{this.remove}}
           ...attributes
@@ -90,7 +81,7 @@ class LinksToManyEditor extends GlimmerComponent<Signature> {
   };
 
   private chooseCard = restartableTask(async () => {
-    let selectedCards = (this.args.model.value as any)[this.args.field.name];
+    let selectedCards = this.args.model.value;
     let selectedCardsQuery =
       selectedCards?.map((card: any) => ({ not: { eq: { id: card.id } } })) ??
       [];
@@ -111,27 +102,22 @@ class LinksToManyEditor extends GlimmerComponent<Signature> {
     );
     if (chosenCard) {
       selectedCards = [...selectedCards, chosenCard];
-      (this.args.model.value as any)[this.args.field.name] = selectedCards;
+      this.args.model.set(selectedCards);
     }
   });
 
   remove = (index: number) => {
-    let cards = (this.args.model.value as any)[this.args.field.name];
+    let cards = this.args.model.value;
     cards = cards.filter((_c: CardDef, i: number) => i !== index);
-    (this.args.model.value as any)[this.args.field.name] = cards;
+    this.args.model.set(cards);
   };
 }
 
 interface LinksToManyStandardEditorSignature {
   Element: HTMLElement;
   Args: {
-    model: Box<CardDef>;
-    arrayField: Box<CardDef[]>;
+    model: Box<CardDef[]>;
     field: Field<typeof CardDef>;
-    cardTypeFor(
-      field: Field<typeof BaseDef>,
-      boxedElement: Box<BaseDef>,
-    ): typeof BaseDef;
     add: () => void;
     remove: (i: number) => void;
   };
@@ -142,14 +128,14 @@ class LinksToManyStandardEditor extends GlimmerComponent<LinksToManyStandardEdit
 
   @action
   setItems(items: any) {
-    (this.args.model.value as any)[this.args.field.name] = items;
+    this.args.model.set(items);
   }
 
   <template>
     <PermissionsConsumer as |permissions|>
-      {{#if @arrayField.children.length}}
+      {{#if @model.children.length}}
         <ul class='list' {{sortableGroup onChange=this.setItems}} ...attributes>
-          {{#each @arrayField.children as |boxedElement i|}}
+          {{#each @model.children as |boxedElement i|}}
             <li
               class='editor'
               data-test-item={{i}}
@@ -181,7 +167,7 @@ class LinksToManyStandardEditor extends GlimmerComponent<LinksToManyStandardEdit
               {{/if}}
               {{#let
                 (getBoxComponent
-                  (@cardTypeFor @field boxedElement) boxedElement @field
+                  (cardTypeFor @field boxedElement.value) boxedElement @field
                 )
                 as |Item|
               }}
@@ -262,13 +248,8 @@ class LinksToManyStandardEditor extends GlimmerComponent<LinksToManyStandardEdit
 interface LinksToManyCompactEditorSignature {
   Element: HTMLElement;
   Args: {
-    model: Box<CardDef>;
-    arrayField: Box<CardDef[]>;
+    model: Box<CardDef[]>;
     field: Field<typeof CardDef>;
-    cardTypeFor(
-      field: Field<typeof BaseDef>,
-      boxedElement: Box<BaseDef>,
-    ): typeof BaseDef;
     add: () => void;
     remove: (i: number) => void;
   };
@@ -278,10 +259,10 @@ class LinksToManyCompactEditor extends GlimmerComponent<LinksToManyCompactEditor
 
   <template>
     <div class='boxel-pills' data-test-pills ...attributes>
-      {{#each @arrayField.children as |boxedElement i|}}
+      {{#each @model.children as |boxedElement i|}}
         {{#let
           (getBoxComponent
-            (@cardTypeFor @field boxedElement) boxedElement @field
+            (cardTypeFor @field boxedElement.value) boxedElement @field
           )
           as |Item|
         }}
@@ -348,8 +329,9 @@ class LinksToManyCompactEditor extends GlimmerComponent<LinksToManyCompactEditor
 function getEditorChildFormat(
   format: Format | undefined,
   defaultFormat: Format,
-  model: Box<FieldDef>,
+  arrayField: Box<FieldDef[]>,
 ) {
+  let model = arrayField.containingBox;
   if (
     (format ?? defaultFormat) === 'edit' &&
     'isFieldDef' in model.value.constructor &&
@@ -374,21 +356,14 @@ function shouldRenderEditor(
 
 export function getLinksToManyComponent({
   model,
-  arrayField,
   field,
-  cardTypeFor,
 }: {
-  model: Box<CardDef>;
-  arrayField: Box<CardDef[]>;
+  model: Box<CardDef[]>;
   field: Field<typeof CardDef>;
-  cardTypeFor(
-    field: Field<typeof BaseDef>,
-    boxedElement: Box<BaseDef>,
-  ): typeof BaseDef;
 }): BoxComponent {
   let getComponents = () =>
-    arrayField.children.map((child) =>
-      getBoxComponent(cardTypeFor(field, child), child, field),
+    model.children.map((child) =>
+      getBoxComponent(cardTypeFor(field, child.value), child, field),
     ); // Wrap the the components in a function so that the template is reactive to changes in the model (this is essentially a helper)
   let isComputed = !!field.computeVia;
   let linksToManyComponent = class LinksToManyComponent extends GlimmerComponent<BoxComponentSignature> {
@@ -397,9 +372,7 @@ export function getLinksToManyComponent({
         {{#if (shouldRenderEditor @format defaultFormats.cardDef isComputed)}}
           <LinksToManyEditor
             @model={{model}}
-            @arrayField={{arrayField}}
             @field={{field}}
-            @cardTypeFor={{cardTypeFor}}
             @childFormat={{getEditorChildFormat
               @format
               defaultFormats.cardDef
@@ -416,7 +389,7 @@ export function getLinksToManyComponent({
             <div
               class='plural-field linksToMany-field
                 {{effectiveFormat}}-effectiveFormat
-                {{unless arrayField.children.length "empty"}}
+                {{unless model.children.length "empty"}}
                 display-container-{{displayContainer}}'
               data-test-plural-view={{field.fieldType}}
               data-test-plural-view-format={{effectiveFormat}}

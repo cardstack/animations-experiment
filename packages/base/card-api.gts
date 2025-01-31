@@ -347,18 +347,17 @@ function callSerializeHook(
   }
 }
 
-function cardTypeFor(
+export function cardTypeFor(
   field: Field<typeof BaseDef>,
-  boxedElement: Box<BaseDef>,
+  cardOrField: BaseDef,
 ): typeof BaseDef {
   if (primitive in field.card) {
     return field.card;
   }
-  if (boxedElement.value == null) {
+  if (cardOrField == null) {
     return field.card;
   }
-  return Reflect.getPrototypeOf(boxedElement.value)!
-    .constructor as typeof BaseDef;
+  return Reflect.getPrototypeOf(cardOrField)!.constructor as typeof BaseDef;
 }
 
 function resourceFrom(
@@ -659,7 +658,6 @@ class ContainsMany<FieldT extends FieldDefConstructor>
       model,
       arrayField,
       field: this,
-      cardTypeFor,
     });
   }
 }
@@ -1513,10 +1511,8 @@ class LinksToMany<FieldT extends CardDefConstructor>
       useIndexBasedKey in this.card,
     ) as unknown as Box<CardDef[]>;
     return getLinksToManyComponent({
-      model,
-      arrayField,
+      model: arrayField,
       field: this,
-      cardTypeFor,
     });
   }
 }
@@ -3033,6 +3029,14 @@ export class Box<T> {
 
   private constructor(state: Box<T>['state']) {
     this.state = state;
+  }
+
+  get containingBox(): Box<T> {
+    if (this.state.type === 'root') {
+      throw new Error('no parent for root box');
+    } else {
+      return this.state.containingBox;
+    }
   }
 
   get value(): T {
