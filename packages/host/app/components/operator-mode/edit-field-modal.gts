@@ -25,7 +25,7 @@ import {
   chooseCard,
   loadCard,
   identifyCard,
-  catalogEntryRef,
+  boxelSpecRef,
   CodeRef,
 } from '@cardstack/runtime-common';
 
@@ -40,8 +40,8 @@ import OperatorModeStateService from '@cardstack/host/services/operator-mode-sta
 
 import type RealmService from '@cardstack/host/services/realm';
 
+import type { BoxelSpec } from 'https://cardstack.com/base/boxel-spec';
 import type { BaseDef, FieldType } from 'https://cardstack.com/base/card-api';
-import type { CatalogEntry } from 'https://cardstack.com/base/catalog-entry';
 
 import { SelectedTypePill } from './create-file-modal';
 
@@ -164,35 +164,35 @@ export default class EditFieldModal extends Component<Signature> {
     this.fieldRef = ref;
 
     // Field's card can descend from a FieldDef or a CardDef, so we need to determine which one it is. We do this by checking the field's type -
-    // contains/containsMany is a FieldDef, and linksTo/linksToMany is a CardDef. When spawning the card chooser, the catalog entry will have the isField property set,
-    // which dictates the field type. But at this point where we are editing an existing field, we don't have the catalog entry available, so we need to determine isFieldDef
+    // contains/containsMany is a FieldDef, and linksTo/linksToMany is a CardDef. When spawning the card chooser, the boxel spec will have the isField property set,
+    // which dictates the field type. But at this point where we are editing an existing field, we don't have the boxel spec available, so we need to determine isFieldDef
     // from the field's type
     this.isFieldDef =
       this.determineFieldOrCardFromFieldType(field.type) === 'field';
   });
 
   private chooseCardTask = restartableTask(async () => {
-    let chosenCatalogEntry = await chooseCard<CatalogEntry>({
+    let chosenBoxelSpec = await chooseCard<BoxelSpec>({
       filter: {
-        type: catalogEntryRef,
+        type: boxelSpecRef,
       },
     });
 
-    if (chosenCatalogEntry) {
-      this.fieldCard = await loadCard(chosenCatalogEntry.ref, {
+    if (chosenBoxelSpec) {
+      this.fieldCard = await loadCard(chosenBoxelSpec.ref, {
         loader: this.loaderService.loader,
-        relativeTo: new URL(chosenCatalogEntry.id),
+        relativeTo: new URL(chosenBoxelSpec.id),
       });
 
-      this.isFieldDef = chosenCatalogEntry.isField;
-      this.cardURL = new URL(chosenCatalogEntry.id);
-      this.fieldRef = chosenCatalogEntry.ref;
+      this.isFieldDef = chosenBoxelSpec.isField;
+      this.cardURL = new URL(chosenBoxelSpec.id);
+      this.fieldRef = chosenBoxelSpec.ref;
 
       // This transforms relative module paths, such as "../person", to absolute ones -
       // we need that absolute path to load realm info
       this.fieldModuleURL = new URL(
-        chosenCatalogEntry.ref.module,
-        chosenCatalogEntry.id,
+        chosenBoxelSpec.ref.module,
+        chosenBoxelSpec.id,
       );
     }
   });
